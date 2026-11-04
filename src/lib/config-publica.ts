@@ -1,4 +1,5 @@
 import { modoLocal } from "@/lib/modo-local";
+import { estudioDisponible } from "@/lib/estudio/disponible";
 
 /**
  * Configuracion publica que necesita el navegador, servida en tiempo de EJECUCION.
@@ -30,6 +31,11 @@ export interface ConfigPublica {
    * instancia de verdad y para no ofrecer "cerrar sesion", que no tendria a donde ir.
    */
   modoLocal: boolean;
+  /**
+   * El Estudio (/estudio) esta disponible: fuera de produccion. El sidebar lo usa para
+   * mostrar el enlace; la API vuelve a comprobarlo. Ver specs/nucleo/12-estudio.md.
+   */
+  estudio: boolean;
 }
 
 /** `AUTH_ENVIA_CORREOS=true`. Se aceptan las formas de siempre para no pelear con ellas. */
@@ -45,6 +51,7 @@ export function configPublica(): ConfigPublica {
     supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
     authEnviaCorreos: leerBooleano(process.env.AUTH_ENVIA_CORREOS),
     modoLocal: modoLocal(),
+    estudio: estudioDisponible(),
   };
 }
 
@@ -68,6 +75,7 @@ export function leerConfigPublica(): ConfigPublica {
             supabaseAnonKey: datos.supabaseAnonKey ?? "",
             authEnviaCorreos: datos.authEnviaCorreos === true,
             modoLocal: datos.modoLocal === true,
+            estudio: datos.estudio === true,
           };
         }
       } catch {

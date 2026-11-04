@@ -15,6 +15,7 @@ import {
   FileText,
   Workflow,
   FlaskConical,
+  Palette,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { marca, moduloActivo } from "@/lib/config";
@@ -169,9 +170,17 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
 
 export function SidebarFooter() {
   const pathname = usePathname();
+  const esAdmin = useEsAdmin() === true;
+  // El Estudio solo existe fuera de produccion (specs/nucleo/12-estudio.md).
+  const items: NavItem[] = [
+    ...(esAdmin && leerConfigPublica().estudio
+      ? [{ href: "/estudio", label: "Estudio", icon: Palette }]
+      : []),
+    ...footerItems,
+  ];
   return (
     <div className="border-t border-sidebar-border px-3 py-3 space-y-1">
-      {footerItems.map((item) => (
+      {items.map((item) => (
         <NavLink key={item.href} item={item} pathname={pathname} />
       ))}
       <div className="pt-2">

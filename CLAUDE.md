@@ -205,6 +205,13 @@ un segundo. Lo que necesita base o navegador se prueba con `verificar-instancia`
   `postgres`, `{ rows }` con el embebido. El proxy de `src/db/index.ts` lo normaliza en
   modo local porque media docena de lugares hacen `resultado[0]`; sin eso los reportes
   salen en cero sin un solo error.
+- **`config/cliente.ts` lo genera el Estudio.** La config de cada cliente vive en
+  `config/perfiles/<slug>/config.json` (assets en `public/marca/<slug>/`) y `cliente.ts`
+  solo importa el perfil activo. Para adaptar un cliente se edita ese `config.json` (o se
+  usa `/estudio`), no `cliente.ts`. El Estudio escribe archivos, asi que existe solo con
+  `NODE_ENV !== "production"`: en la imagen desplegada la pagina y `/api/estudio/*` dan
+  404. Al activar un perfil, `sincronizarPipeline({ borrarSobrantes: "con-clave" })` borra
+  las etapas vacias del perfil anterior. Ver `specs/nucleo/12-estudio.md`.
 - **Datos demo** por `POST /api/seed/demo` (admin o `AGENT_WORKER_SECRET`): usan el
   conector `simulador` para que la demo responda; los reportes solo excluyen a los
   contactos creados desde `/simulador`.

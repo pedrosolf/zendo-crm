@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { pipelines, pipelineStages, deals } from "@/db/schema";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getConfig } from "@/lib/config";
+import type { ConfigCliente } from "@/lib/config/schema";
 
 /**
  * Lleva el pipeline por defecto al estado que describe config/cliente.ts.
@@ -17,9 +18,16 @@ import { getConfig } from "@/lib/config";
  *    `borrarSobrantes` es true (no es el default).
  *
  * La UI sigue pudiendo crear etapas a mano; esas quedan sin key y sobreviven.
+ *
+ * `opts.pipeline` sincroniza ese pipeline en vez del de la config cargada. Lo usa el
+ * Estudio al activar un perfil: acaba de escribir el archivo y el bundler todavia no
+ * recargo el modulo de la config, asi que `getConfig()` devolveria la vieja.
  */
-export async function sincronizarPipeline(opts?: { borrarSobrantes?: boolean }) {
-  const { pipeline } = getConfig();
+export async function sincronizarPipeline(opts?: {
+  borrarSobrantes?: boolean | "con-clave";
+  pipeline?: ConfigCliente["pipeline"];
+}) {
+  const pipeline = opts?.pipeline ?? getConfig().pipeline;
 
   let [principal] = await db
     .select()
@@ -99,7 +107,10 @@ export async function sincronizarPipeline(opts?: { borrarSobrantes?: boolean }) 
       .select({ n: sql<number>`count(*)::int` })
       .from(deals)
       .where(eq(deals.stageId, s.id));
-    if (opts?.borrarSobrantes && n === 0) {
+    // "con-clave": solo las que vinieron de una config (tienen key); las creadas a mano
+    // desde la UI se conservan aunque esten vacias.
+    const borrable = opts?.borrarSobrantes === "con-clave" ? Boolean(s.key) : Boolean(opts?.borrarSobrantes);
+    if (borrable && n === 0) {
       await db.delete(pipelineStages).where(eq(pipelineStages.id, s.id));
       borradas++;
     } else {
