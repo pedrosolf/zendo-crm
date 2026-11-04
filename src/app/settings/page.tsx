@@ -13,7 +13,9 @@ import {
   MessageSquare,
   Users,
   Workflow,
+  BookOpen,
 } from "lucide-react";
+import { KnowledgeSettings } from "@/components/settings/KnowledgeSettings";
 import { toast } from "sonner";
 import { NotificationToggle } from "@/components/shared/NotificationToggle";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -134,6 +136,19 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <AgentSettings />
+          </CardContent>
+        </Card>
+
+        {/* Base de conocimiento del agente (specs/nucleo/13) */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <BookOpen className="h-4 w-4" />
+              Base de conocimiento
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <KnowledgeSettings />
           </CardContent>
         </Card>
 

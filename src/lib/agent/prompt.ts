@@ -149,6 +149,22 @@ export async function renderContexto(contactId: string): Promise<string> {
   ];
   if (etapasTxt) partes.push("## Pipeline (clave: nombre)", etapasTxt);
   if (aAveriguar.length) partes.push("## Datos a averiguar", ...aAveriguar);
+
+  // Base de conocimiento (specs/nucleo/13): si hay documentos, el agente sabe que existen
+  // y que tiene que buscar ahi antes de responder sobre esos temas, en vez de inventar.
+  try {
+    const { documentosListos } = await import("@/lib/conocimiento");
+    const docs = await documentosListos();
+    if (docs.length) {
+      partes.push(
+        "## Base de conocimiento",
+        `Documentos: ${docs.map((d) => `"${d}"`).join(", ")}.`,
+        "Antes de responder sobre productos, precios, servicios, horarios, requisitos o cualquier dato que pueda estar en esos documentos, usa buscar_conocimiento. Responde solo con lo que encuentres; si no aparece, decilo y ofrece derivar a una persona."
+      );
+    }
+  } catch (err) {
+    console.error("[prompt] base de conocimiento:", err instanceof Error ? err.message : err);
+  }
   return partes.join("\n");
 }
 

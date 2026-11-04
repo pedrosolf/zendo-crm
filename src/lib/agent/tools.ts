@@ -425,7 +425,39 @@ function toolsGenericas(): ToolAgente[] {
       descripcionUI: `Permite al agente asignar el contacto a un ${etiquetaAsesor} por nombre. Dispara la automatizacion de aviso.`,
       ejecutar: (a, ctx) => asignarAsesor(a as { asesor?: string; motivo?: string }, ctx),
     },
+    {
+      definicion: definir(
+        "buscar_conocimiento",
+        "Busca en los documentos de la base de conocimiento (catalogos, precios, servicios, tramites, preguntas frecuentes). " +
+          "Usala antes de responder datos concretos del negocio. Devuelve los fragmentos mas relevantes con el documento de origen.",
+        {
+          type: "object",
+          properties: {
+            consulta: { type: "string", description: "Lo que hay que averiguar, en pocas palabras (ej: precio zapatillas running)." },
+          },
+          required: ["consulta"],
+          additionalProperties: false,
+        }
+      ),
+      descripcionUI: "Permite al agente consultar los documentos de Ajustes -> Base de conocimiento (catalogos, precios, tramites).",
+      ejecutar: (a) => buscarEnConocimiento(a as { consulta?: string }),
+    },
   ];
+}
+
+/** Ver specs/nucleo/13-base-de-conocimiento.md. */
+async function buscarEnConocimiento(args: { consulta?: string }): Promise<ToolResult> {
+  const consulta = String(args.consulta ?? "").trim().slice(0, 500);
+  if (!consulta) return { ok: false, error: "consulta vacia" };
+  const { buscarConocimiento } = await import("@/lib/conocimiento");
+  const resultados = await buscarConocimiento(consulta);
+  if (resultados.length === 0) {
+    return { ok: true, data: { resultados: [], mensaje: "No hay nada sobre eso en la base de conocimiento. No inventes: decilo y ofrece derivar." } };
+  }
+  return {
+    ok: true,
+    data: { resultados: resultados.map((r) => ({ documento: r.documento, texto: r.contenido })) },
+  };
 }
 
 // ============================================================

@@ -7,6 +7,8 @@ import {
   jsonb,
   uuid,
   unique,
+  real,
+  index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -540,3 +542,38 @@ export const documents = pgTable("documents", {
     .notNull()
     .defaultNow(),
 });
+
+/**
+ * Base de conocimiento del agente (specs/nucleo/13-base-de-conocimiento.md). Documentos
+ * que sube el admin, partidos en fragmentos con su embedding. El archivo no se guarda.
+ */
+export const conocimientoDocumentos = pgTable("conocimiento_documentos", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  nombre: text("nombre").notNull(),
+  mime: text("mime").notNull(),
+  tamano: integer("tamano").notNull(),
+  /** procesando | listo | error */
+  estado: text("estado").notNull().default("procesando"),
+  error: text("error"),
+  modeloEmbedding: text("modelo_embedding"),
+  fragmentos: integer("fragmentos").notNull().default(0),
+  subidoPor: uuid("subido_por").references(() => teamMembers.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** `embedding` es real[] (no pgvector): ver la migracion 20261104000000_conocimiento.sql. */
+export const conocimientoFragmentos = pgTable(
+  "conocimiento_fragmentos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    documentoId: uuid("documento_id")
+      .notNull()
+      .references(() => conocimientoDocumentos.id, { onDelete: "cascade" }),
+    orden: integer("orden").notNull(),
+    contenido: text("contenido").notNull(),
+    embedding: real("embedding").array(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("conocimiento_fragmentos_documento_idx").on(t.documentoId, t.orden)]
+);
