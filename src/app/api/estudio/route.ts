@@ -24,7 +24,14 @@ export async function POST(req: Request) {
       if (!["vacio", "plantilla", "perfil"].includes(desde?.tipo)) {
         throw new ErrorEstudio("Origen invalido.");
       }
-      return { slug: crearPerfil({ nombre: String(body.nombre ?? ""), slug: body.slug, desde }) };
+      return {
+        slug: crearPerfil({
+          nombre: String(body.nombre ?? ""),
+          asistente: typeof body.asistente === "string" ? body.asistente : undefined,
+          slug: body.slug,
+          desde,
+        }),
+      };
     }
     throw new ErrorEstudio("Accion desconocida.");
   });

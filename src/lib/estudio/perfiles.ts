@@ -180,7 +180,7 @@ export type OrigenPerfil =
   | { tipo: "plantilla"; clave: string }
   | { tipo: "perfil"; slug: string };
 
-export function crearPerfil(entrada: { nombre: string; slug: unknown; desde: OrigenPerfil }): string {
+export function crearPerfil(entrada: { nombre: string; asistente?: string; slug: unknown; desde: OrigenPerfil }): string {
   const slug = exigirSlug(entrada.slug);
   const nombre = entrada.nombre.trim();
   if (!nombre) throw new ErrorEstudio("El perfil necesita un nombre.");
@@ -209,6 +209,9 @@ export function crearPerfil(entrada: { nombre: string; slug: unknown; desde: Ori
       logo: rutaPublicaAsset(slug, "logo"),
       icono: rutaPublicaAsset(slug, "icono"),
     },
+    ...(entrada.asistente?.trim()
+      ? { agente: { ...base.agente, nombre: entrada.asistente.trim().slice(0, 40) } }
+      : {}),
   };
   const { errores } = validar(config);
   if (errores.length > 0) throw new ErrorEstudio("La configuracion de origen no es valida.", 400, errores);

@@ -30,6 +30,7 @@ export function DialogNuevoPerfil({
   origenInicial?: Origen;
 }) {
   const [nombre, setNombre] = useState("");
+  const [asistente, setAsistente] = useState("");
   const [slug, setSlug] = useState("");
   const [slugTocado, setSlugTocado] = useState(false);
   const [origen, setOrigen] = useState<Origen>(origenInicial ?? { tipo: "vacio" });
@@ -45,7 +46,7 @@ export function DialogNuevoPerfil({
       const r = await fetch("/api/estudio", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accion: "crear", nombre, slug: slugFinal, desde: origen }),
+        body: JSON.stringify({ accion: "crear", nombre, asistente, slug: slugFinal, desde: origen }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error([d.error, ...(d.errores ?? [])].join(" "));
@@ -75,6 +76,12 @@ export function DialogNuevoPerfil({
         <div className="space-y-4">
           <Campo etiqueta="Nombre del cliente">
             <Input autoFocus value={nombre} maxLength={60} placeholder="Clinica Norte" onChange={(e) => setNombre(e.target.value)} />
+          </Campo>
+          <Campo
+            etiqueta="Nombre del asistente"
+            ayuda="Como se presenta el bot en WhatsApp, Instagram y Messenger. Vacio = el de la plantilla (o Asistente)."
+          >
+            <Input value={asistente} maxLength={40} placeholder="muni-bot" onChange={(e) => setAsistente(e.target.value)} />
           </Campo>
           <Campo
             etiqueta="Identificador"
