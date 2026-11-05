@@ -126,10 +126,11 @@ async function main() {
           (tenant_id, provider, platform, zernio_account_id, zernio_profile_id,
            username, display_name, status, connected_at)
         values
-          (${tenant.id}, 'zernio', ${a.platform}, ${id}, ${a.profileId ?? PROFILE_ID ?? null},
+          (${tenant.id}, 'zernio', ${a.platform}, ${id}, ${(typeof a.profileId === "object" ? a.profileId?._id : a.profileId) ?? PROFILE_ID ?? null},
            ${a.username ?? null}, ${a.displayName ?? a.name ?? null}, 'active', now())
         on conflict (zernio_account_id) do update set
           platform     = excluded.platform,
+          zernio_profile_id = excluded.zernio_profile_id,
           username     = excluded.username,
           display_name = excluded.display_name,
           status       = 'active',

@@ -118,12 +118,26 @@ export interface UpsertChannelAccountInput {
   platform: Channel;
   provider?: Provider;
   zernioAccountId?: string | null;
-  zernioProfileId?: string | null;
+  /** Id o el objeto poblado que a veces manda Zernio: lo normaliza `idDePerfil`. */
+  zernioProfileId?: unknown;
   username?: string | null;
   displayName?: string | null;
   externalRef?: string | null;
   status?: string;
   connectedAt?: Date | null;
+}
+
+/**
+ * La API de Zernio devuelve `profileId` a veces como id y a veces poblado
+ * (`{ _id, name }`, en GET /accounts). Guardado tal cual quedaba "[object Object]".
+ */
+export function idDePerfil(valor: unknown): string | null {
+  if (typeof valor === "string") return valor || null;
+  if (valor && typeof valor === "object") {
+    const id = (valor as { _id?: unknown; id?: unknown })._id ?? (valor as { id?: unknown }).id;
+    return typeof id === "string" ? id : null;
+  }
+  return null;
 }
 
 /**
@@ -140,7 +154,7 @@ export async function upsertZernioAccount(
     provider: input.provider ?? ("zernio" as Provider),
     platform: input.platform,
     zernioAccountId: input.zernioAccountId,
-    zernioProfileId: input.zernioProfileId ?? null,
+    zernioProfileId: idDePerfil(input.zernioProfileId),
     username: input.username ?? null,
     displayName: input.displayName ?? null,
     externalRef: input.externalRef ?? null,
