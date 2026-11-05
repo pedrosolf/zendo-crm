@@ -31,9 +31,9 @@ export const simulador: Conector = {
       cuentas: [],
       notas: [
         "Para demos y autoverificacion: las conversaciones simuladas no salen a ningun canal real.",
-        process.env.OPENROUTER_API_KEY
+        process.env.OPENROUTER_API_KEY || process.env.NVIDIA_API_KEY
           ? "Agente listo para responder."
-          : "Falta OPENROUTER_API_KEY: el simulador no puede hacer responder al agente.",
+          : "Falta la clave del proveedor del agente (OPENROUTER_API_KEY o NVIDIA_API_KEY): el simulador no puede hacerlo responder.",
       ],
     };
   },

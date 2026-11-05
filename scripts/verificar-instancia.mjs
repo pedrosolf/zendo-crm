@@ -192,7 +192,7 @@ let estado = null;
     if (faltanM.length) fallo("Modulos activos", `faltan: ${faltanM.join(", ")} (hay: ${json.modulos.join(", ") || "ninguno"})`);
     else ok("Modulos activos", json.modulos.join(", ") || "ninguno");
     ok("Campos del contacto", `${json.campos.length}: ${json.campos.map((c) => c.clave).join(", ") || "ninguno"}`);
-    if (!json.agente.configurado) salto("Agente configurado", "falta OPENROUTER_API_KEY en la instancia");
+    if (!json.agente.configurado) salto("Agente configurado", "falta la clave del proveedor (OPENROUTER_API_KEY o NVIDIA_API_KEY) en la instancia");
     else ok("Agente configurado", json.agente.modelo);
   } else {
     fallo("Pipeline/config (/api/simulador/estado)", `${res.status} ${json?.error ?? ""} (hace falta --secreto o una sesion admin)`);

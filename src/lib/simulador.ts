@@ -11,7 +11,7 @@ import { emitContactCreated } from "@/lib/contacts/events";
 import { assignContact } from "@/lib/contacts/assign";
 import { getConversation } from "@/lib/conversations";
 import { runAgentForConversation } from "@/lib/agent";
-import { hasOpenRouterKey } from "@/lib/agent/openrouter";
+import { faltaClaveLLM, hasOpenRouterKey } from "@/lib/agent/openrouter";
 import type { Channel } from "@/lib/channels/types";
 import type { TeamMember } from "@/lib/team";
 
@@ -133,7 +133,7 @@ async function estadoContacto(contactId: string | null): Promise<EstadoContactoS
  */
 async function turnoDelAgente(conversationId: string): Promise<ResultadoSimulacion["agente"]> {
   if (!hasOpenRouterKey()) {
-    return { ok: false, reason: "falta OPENROUTER_API_KEY en .env.local" };
+    return { ok: false, reason: `${faltaClaveLLM()} en .env.local` };
   }
   try {
     return await runAgentForConversation(conversationId);

@@ -164,7 +164,7 @@ export async function buscarConocimiento(consulta: string, limite = 5): Promise<
   // Solo se vectoriza la consulta si hay fragmentos del mismo modelo: vectores de modelos
   // distintos no se comparan.
   const hayDelModelo = filas.some((f) => f.modelo === modelo && f.embedding);
-  const [vector] = hayDelModelo ? await vectorizar([consulta], modelo) : [null];
+  const [vector] = hayDelModelo ? await vectorizar([consulta], modelo, "query") : [null];
   return filas
     .map((f) => ({
       documento: f.documento,
