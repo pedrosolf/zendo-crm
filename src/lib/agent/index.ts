@@ -9,8 +9,9 @@ import { getConfig } from "@/lib/config";
 import { getAgentConfig } from "./config";
 import { renderContexto, renderSystemPrompt } from "./prompt";
 import { executeTool, getEnabledToolDefinitions, type ToolContext } from "./tools";
-import { getOpenRouterClient, getAgentModel, hasOpenRouterKey } from "./openrouter";
+import { getOpenRouterClient, getAgentModel, getAgentModelRespaldo, hasOpenRouterKey, TIMEOUT_LLM_MS } from "./openrouter";
 import { aFormatoDeCanal } from "./formato";
+import { esFallaDelProveedor } from "./fallas";
 
 const MAX_TOOL_ROUNDS = 6;
 const HISTORY_LIMIT = 30;
@@ -79,15 +80,30 @@ export async function runAgentForConversation(conversationId: string): Promise<R
 
   const client = getOpenRouterClient();
   let toolCalls = 0;
+  // Si el principal falla una vez, el resto del turno va con el respaldo: volver a
+  // esperarlo en cada ronda gastaria el minuto que da la plataforma.
+  let modelo = config.model;
+  const respaldo = getAgentModelRespaldo(config.model);
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const completion = await client.chat.completions.create({
-      model: config.model,
+  const completar = async () => {
+    const pedido = {
       messages: llmMessages,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: tools.length > 0 ? "auto" : undefined,
+      tool_choice: tools.length > 0 ? ("auto" as const) : undefined,
       max_completion_tokens: 1024,
-    });
+    };
+    try {
+      return await client.chat.completions.create({ ...pedido, model: modelo }, { timeout: TIMEOUT_LLM_MS });
+    } catch (err) {
+      if (!respaldo || modelo === respaldo || !esFallaDelProveedor(err)) throw err;
+      console.warn(`[agent] ${modelo} fallo (${err instanceof Error ? err.message : err}); sigo con ${respaldo}`);
+      modelo = respaldo;
+      return await client.chat.completions.create({ ...pedido, model: modelo }, { timeout: TIMEOUT_LLM_MS });
+    }
+  };
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const completion = await completar();
 
     const choice = completion.choices[0];
     const assistantMsg = choice.message;

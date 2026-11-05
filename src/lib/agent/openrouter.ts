@@ -20,6 +20,8 @@ interface DatosProveedor {
   baseURL: string;
   variableClave: "OPENROUTER_API_KEY" | "NVIDIA_API_KEY";
   modeloDefault: string;
+  /** Si el principal no contesta a tiempo. Vacio = sin respaldo. */
+  respaldoDefault: string;
   embeddingDefault: string;
 }
 
@@ -29,6 +31,7 @@ const PROVEEDORES: Record<ProveedorLLM, DatosProveedor> = {
     baseURL: "https://openrouter.ai/api/v1",
     variableClave: "OPENROUTER_API_KEY",
     modeloDefault: "google/gemini-2.5-flash",
+    respaldoDefault: "",
     embeddingDefault: "nvidia/nemotron-3-embed-1b:free",
   },
   nvidia: {
@@ -38,6 +41,9 @@ const PROVEEDORES: Record<ProveedorLLM, DatosProveedor> = {
     // Elegido el 2026-11-05 entre los gratuitos de NIM: acierta las tools de muni-bot
     // (clasificar y registrar con la categoria exacta) en 2-5 s.
     modeloDefault: "nvidia/nemotron-3-ultra-550b-a55b",
+    // La capa gratuita de NIM a veces deja al modelo grande colgado minutos enteros
+    // (visto el 2026-11-05: 90 s sin respuesta mientras este contestaba en 0,8 s).
+    respaldoDefault: "nvidia/nemotron-3.5-lightning-30b-a3b",
     embeddingDefault: "nvidia/nemotron-3-embed-1b",
   },
 };
@@ -71,6 +77,8 @@ export function getOpenRouterClient(): OpenAI {
     client = new OpenAI({
       apiKey,
       baseURL: p.baseURL,
+      // El reintento lo decide el agente (con otro modelo): el SDK reintentaria el mismo.
+      maxRetries: 0,
       // OpenRouter usa estos headers para su ranking (opcional); NVIDIA los ignora.
       defaultHeaders:
         p.id === "openrouter"
@@ -86,6 +94,24 @@ export function getOpenRouterClient(): OpenAI {
 export function getAgentModel(): string {
   return process.env.AGENT_MODEL || getConfig().agente.modelo || datosProveedor().modeloDefault;
 }
+
+/**
+ * Modelo de respaldo: AGENT_MODEL_FALLBACK -> default del proveedor. "off" lo apaga.
+ * Nunca devuelve el mismo modelo que el principal (reintentarlo no ayuda).
+ */
+export function getAgentModelRespaldo(principal: string): string | null {
+  const v = process.env.AGENT_MODEL_FALLBACK?.trim();
+  if (v && v.toLowerCase() === "off") return null;
+  const modelo = v || datosProveedor().respaldoDefault;
+  return modelo && modelo !== principal ? modelo : null;
+}
+
+/**
+ * Tope de espera por llamada al modelo. Vercel corta la funcion a los 60 s y el job queda
+ * en "processing" para siempre: sin tope, un proveedor colgado deja al bot mudo sin un
+ * solo error. 20 s deja lugar para el respaldo y para las tools dentro de ese minuto.
+ */
+export const TIMEOUT_LLM_MS = Number(process.env.AGENT_LLM_TIMEOUT_MS) || 20_000;
 
 /** Hay clave para el proveedor elegido (nombre heredado de cuando solo era OpenRouter). */
 export function hasOpenRouterKey(): boolean {
