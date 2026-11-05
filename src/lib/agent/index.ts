@@ -10,6 +10,7 @@ import { getAgentConfig } from "./config";
 import { renderContexto, renderSystemPrompt } from "./prompt";
 import { executeTool, getEnabledToolDefinitions, type ToolContext } from "./tools";
 import { getOpenRouterClient, getAgentModel, hasOpenRouterKey } from "./openrouter";
+import { aFormatoDeCanal } from "./formato";
 
 const MAX_TOOL_ROUNDS = 6;
 const HISTORY_LIMIT = 30;
@@ -125,7 +126,8 @@ export async function runAgentForConversation(conversationId: string): Promise<R
       continue;
     }
 
-    const reply = assistantMsg.content?.trim() ?? "";
+    // El simulador imita el canal de la conversacion: mismo formato que el real.
+    const reply = aFormatoDeCanal(assistantMsg.content?.trim() ?? "", channel);
     if (!reply) return { ok: false, reason: "empty_reply", toolCalls };
 
     const entrega = await deliverMessage(conversation.id, { text: reply }, "agent");
