@@ -6,6 +6,7 @@ import type { ModuloServidor } from "@/lib/modules/types";
 import type { ToolResult } from "@/lib/agent/tools";
 import manifiesto from "./manifiesto";
 import { sugerir } from "./lib/clasificador";
+import { resolverProblema } from "./lib/resolver";
 import { buscarDenuncia, catalogoProblemas, ErrorPortal, insertarDenuncia, portalConfigurado } from "./lib/portal";
 import { centroCiudad, ciudad, ubicar } from "./lib/geocodificar";
 import { ReclamosPage } from "./componentes/ReclamosPage";
@@ -77,9 +78,10 @@ async function registrar(args: Record<string, unknown>, ctx: { contactId: string
   if (!portalConfigurado()) return sinPortal();
   const errores: string[] = [];
 
-  const problemaId = Number(args.problema_id);
-  const problema = (await catalogoProblemas()).find((p) => p.id === problemaId);
-  if (!problema) errores.push("problema_id: no existe; usa clasificar_reclamo para obtenerlo");
+  // Por nombre, no por id: ver resolverProblema.
+  const resuelto = resolverProblema(await catalogoProblemas(), args);
+  const problema = "problema" in resuelto ? resuelto.problema : undefined;
+  if ("error" in resuelto) errores.push(resuelto.error);
 
   const direccion = texto(args.direccion, 255);
   if (!direccion) errores.push("direccion: falta la calle y altura (o esquina) del problema");
@@ -232,11 +234,15 @@ const servidor: ModuloServidor = {
         function: {
           name: "registrar_reclamo",
           description:
-            "Registra el reclamo en el portal municipal y devuelve el codigo de seguimiento. Llamala SOLO cuando tengas: problema_id confirmado, direccion, DNI, nombre y apellido, y el vecino confirmo el resumen. El telefono por defecto es el del chat.",
+            "Registra el reclamo en el portal municipal y devuelve el codigo de seguimiento. Llamala SOLO cuando tengas: la categoria confirmada, direccion, DNI, nombre y apellido, y el vecino confirmo el resumen. El telefono por defecto es el del chat.",
           parameters: {
             type: "object",
             properties: {
-              problema_id: { type: "integer", description: "De clasificar_reclamo, confirmado por el vecino." },
+              problema: {
+                type: "string",
+                description: "Nombre EXACTO de la categoria que confirmo el vecino, tal como lo devolvio clasificar_reclamo o listar_problemas (ej. 'Bacheo urbano').",
+              },
+              problema_id: { type: "integer", description: "Opcional. Si no coincide con el nombre, se usa el nombre." },
               descripcion: { type: "string", description: "Descripcion del problema." },
               direccion: { type: "string", description: "Calle y altura, o esquina, donde esta el problema." },
               referencia: { type: "string", description: "Referencia opcional (frente a la escuela, al lado del kiosco)." },
@@ -250,7 +256,7 @@ const servidor: ModuloServidor = {
                 description: "true solo si la direccion no se encontro y el vecino no puede precisarla.",
               },
             },
-            required: ["problema_id", "direccion", "dni", "nombre", "apellido"],
+            required: ["problema", "direccion", "dni", "nombre", "apellido"],
             additionalProperties: false,
           },
         },
