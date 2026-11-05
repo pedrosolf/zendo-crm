@@ -127,11 +127,14 @@ async function registrar(args: Record<string, unknown>, ctx: { contactId: string
       denunciante_email: email || null,
     });
 
-    // La ficha del contacto queda al dia: nombre, DNI y el codigo para el seguimiento.
+    // La ficha del contacto queda al dia: DNI, el codigo para el seguimiento y el nombre
+    // real si el de WhatsApp no lo es ("." , ":/", un numero). Un nombre con letras se
+    // respeta: puede haberlo cargado una persona del equipo.
     await db
       .update(contacts)
       .set({
         customFields: sql`${contacts.customFields} || ${JSON.stringify({ dni, ultimo_reclamo: codigo })}::jsonb`,
+        name: sql`case when ${contacts.name} ~ '[[:alpha:]]{2,}' then ${contacts.name} else ${`${nombre} ${apellido}`} end`,
         updatedAt: new Date(),
       })
       .where(eq(contacts.id, ctx.contactId));
