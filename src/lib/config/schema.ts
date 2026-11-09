@@ -116,6 +116,16 @@ export const esquemaAgente = z.object({
     .min(1)
     .max(500)
     .default("Te paso con una persona del equipo que te va a ayudar con esto. Un momento."),
+  /**
+   * Lo que se le dice al cliente si ningun modelo responde (proveedor caido, cuota
+   * agotada, clave vencida). Sin esto el cliente no recibia nada. Ver
+   * specs/nucleo/14-contingencia-del-agente.md.
+   */
+  mensajeSinServicio: z
+    .string()
+    .min(1)
+    .max(500)
+    .default("Perdon, en este momento no puedo responderte. Por favor escribime de nuevo en unos minutos."),
 });
 
 export const esquemaModulosNucleo = z.object({
@@ -199,6 +209,7 @@ export const esquemaConfig = z.object({
   agente: esquemaAgente.default({
     nombre: "Asistente",
     mensajeDerivacion: "Te paso con una persona del equipo que te va a ayudar con esto. Un momento.",
+    mensajeSinServicio: "Perdon, en este momento no puedo responderte. Por favor escribime de nuevo en unos minutos.",
   }),
   /** Datos de demostracion del nicho. Sin esto, la demo del nucleo es generica. */
   demo: esquemaDemo.optional(),

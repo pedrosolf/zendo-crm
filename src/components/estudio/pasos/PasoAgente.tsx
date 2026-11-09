@@ -79,6 +79,21 @@ export function PasoAgente({ config, cambiar, errores }: PropsPaso) {
           onChange={(e) => set({ mensajeDerivacion: e.target.value || undefined })}
         />
       </Campo>
+
+      <Campo
+        etiqueta="Mensaje si la IA no responde"
+        className="sm:col-span-2"
+        ayuda="Si ningun modelo contesta (proveedor caido, cuota agotada), el cliente recibe esto en vez de silencio. No se repite antes de 30 minutos."
+        errores={erroresDe(errores, "agente.mensajeSinServicio")}
+      >
+        <Textarea
+          value={a.mensajeSinServicio ?? ""}
+          rows={2}
+          maxLength={500}
+          placeholder="Perdon, en este momento no puedo responderte. Por favor escribime de nuevo en unos minutos."
+          onChange={(e) => set({ mensajeSinServicio: e.target.value || undefined })}
+        />
+      </Campo>
     </div>
   );
 }

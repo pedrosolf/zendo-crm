@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { getConfig, marca } from "@/lib/config";
+import { cadenaDeModelos, type EslabonModelo } from "./contingencia";
 
 /**
  * Proveedor del LLM del agente. Los dos hablan la API de OpenAI (chat completions con
@@ -65,29 +66,43 @@ export function claveLLM(): string | undefined {
   return process.env[datosProveedor().variableClave] || undefined;
 }
 
-let client: OpenAI | null = null;
-let clientDe: string | null = null;
+const clientes = new Map<ProveedorLLM, OpenAI>();
 
-/** Cliente OpenAI-compatible del proveedor elegido. */
-export function getOpenRouterClient(): OpenAI {
-  const p = datosProveedor();
-  const apiKey = claveLLM();
-  if (!apiKey) throw new Error(`${p.variableClave} no configurada (proveedor ${p.nombre})`);
-  if (!client || clientDe !== p.id) {
-    client = new OpenAI({
+/**
+ * Cliente OpenAI-compatible de un proveedor (por defecto, el elegido). Uno por
+ * proveedor: la cadena de respaldo puede saltar de NVIDIA a OpenRouter en el mismo turno.
+ * Devuelve null si ese proveedor no tiene clave.
+ */
+export function clienteDe(id: ProveedorLLM = proveedorLLM()): OpenAI | null {
+  const p = PROVEEDORES[id];
+  const apiKey = process.env[p.variableClave];
+  if (!apiKey) return null;
+  let c = clientes.get(id);
+  if (!c) {
+    c = new OpenAI({
       apiKey,
       baseURL: p.baseURL,
       // El reintento lo decide el agente (con otro modelo): el SDK reintentaria el mismo.
       maxRetries: 0,
       // OpenRouter usa estos headers para su ranking (opcional); NVIDIA los ignora.
       defaultHeaders:
-        p.id === "openrouter"
+        id === "openrouter"
           ? { "HTTP-Referer": process.env.APP_BASE_URL || "http://localhost:3000", "X-Title": marca().nombre }
           : undefined,
     });
-    clientDe = p.id;
+    clientes.set(id, c);
   }
-  return client;
+  return c;
+}
+
+/** Cliente del proveedor elegido; lanza si no tiene clave. Nombre heredado. */
+export function getOpenRouterClient(): OpenAI {
+  const c = clienteDe();
+  if (!c) {
+    const p = datosProveedor();
+    throw new Error(`${p.variableClave} no configurada (proveedor ${p.nombre})`);
+  }
+  return c;
 }
 
 /** AGENT_MODEL (entorno) -> config.agente.modelo -> default del proveedor. */
@@ -96,14 +111,17 @@ export function getAgentModel(): string {
 }
 
 /**
- * Modelo de respaldo: AGENT_MODEL_FALLBACK -> default del proveedor. "off" lo apaga.
- * Nunca devuelve el mismo modelo que el principal (reintentarlo no ayuda).
+ * Principal y respaldos, en orden. AGENT_MODEL_FALLBACK es una lista separada por comas;
+ * cada entrada puede llevar proveedor ("openrouter:google/gemini-2.5-flash"). Los de un
+ * proveedor sin clave se descartan.
  */
-export function getAgentModelRespaldo(principal: string): string | null {
-  const v = process.env.AGENT_MODEL_FALLBACK?.trim();
-  if (v && v.toLowerCase() === "off") return null;
-  const modelo = v || datosProveedor().respaldoDefault;
-  return modelo && modelo !== principal ? modelo : null;
+export function cadenaDelAgente(principal: string): EslabonModelo[] {
+  return cadenaDeModelos({
+    proveedor: proveedorLLM(),
+    principal,
+    respaldoEnv: process.env.AGENT_MODEL_FALLBACK,
+    respaldoDefault: datosProveedor().respaldoDefault,
+  }).filter((e) => Boolean(process.env[PROVEEDORES[e.proveedor].variableClave]));
 }
 
 /**
@@ -112,6 +130,12 @@ export function getAgentModelRespaldo(principal: string): string | null {
  * solo error. 20 s deja lugar para el respaldo y para las tools dentro de ese minuto.
  */
 export const TIMEOUT_LLM_MS = Number(process.env.AGENT_LLM_TIMEOUT_MS) || 20_000;
+
+/**
+ * Presupuesto del turno entero (todas las rondas de tools). Debajo de los 60 s de Vercel
+ * con margen para mandar el aviso y cerrar el job.
+ */
+export const PRESUPUESTO_TURNO_MS = Number(process.env.AGENT_BUDGET_MS) || 50_000;
 
 /** Hay clave para el proveedor elegido (nombre heredado de cuando solo era OpenRouter). */
 export function hasOpenRouterKey(): boolean {

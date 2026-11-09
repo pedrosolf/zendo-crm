@@ -1,7 +1,7 @@
 import type OpenAI from "openai";
 import { db } from "@/db";
 import { contacts, conversations, messages } from "@/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { deliverMessage, getConversationRow } from "@/lib/channels/deliver";
 import { isChannel, type Channel } from "@/lib/channels/types";
 import { displayName, listMembers } from "@/lib/team";
@@ -9,9 +9,9 @@ import { getConfig } from "@/lib/config";
 import { getAgentConfig } from "./config";
 import { renderContexto, renderSystemPrompt } from "./prompt";
 import { executeTool, getEnabledToolDefinitions, type ToolContext } from "./tools";
-import { getOpenRouterClient, getAgentModel, getAgentModelRespaldo, hasOpenRouterKey, TIMEOUT_LLM_MS } from "./openrouter";
+import { cadenaDelAgente, clienteDe, getAgentModel, hasOpenRouterKey, PRESUPUESTO_TURNO_MS, TIMEOUT_LLM_MS } from "./openrouter";
 import { aFormatoDeCanal } from "./formato";
-import { esFallaDelProveedor } from "./fallas";
+import { debeAvisar, tiempoParaLlamada } from "./contingencia";
 
 const MAX_TOOL_ROUNDS = 6;
 const HISTORY_LIMIT = 30;
@@ -33,6 +33,7 @@ export interface RunAgentResult {
  *    conversacion decide si eso es Zernio, Meta o el simulador.
  */
 export async function runAgentForConversation(conversationId: string): Promise<RunAgentResult> {
+  const inicio = Date.now();
   const conversation = await getConversationRow(conversationId);
   if (!conversation) return { ok: false, reason: "conversation_not_found" };
   if (!conversation.contactId) return { ok: false, reason: "conversation_without_contact" };
@@ -78,34 +79,63 @@ export async function runAgentForConversation(conversationId: string): Promise<R
     channel,
   };
 
-  const client = getOpenRouterClient();
   let toolCalls = 0;
-  // Si el principal falla una vez, el resto del turno va con el respaldo: volver a
-  // esperarlo en cada ronda gastaria el minuto que da la plataforma.
-  let modelo = config.model;
-  const respaldo = getAgentModelRespaldo(config.model);
+  // Principal y respaldos en orden. Si uno falla, el resto del turno sigue con el
+  // siguiente: volver a esperar al caido en cada ronda gastaria el minuto de la plataforma.
+  const cadena = cadenaDelAgente(config.model);
+  let eslabon = 0;
+  const pedido = {
+    messages: llmMessages,
+    tools: tools.length > 0 ? tools : undefined,
+    tool_choice: tools.length > 0 ? ("auto" as const) : undefined,
+    max_completion_tokens: 1024,
+  };
 
-  const completar = async () => {
-    const pedido = {
-      messages: llmMessages,
-      tools: tools.length > 0 ? tools : undefined,
-      tool_choice: tools.length > 0 ? ("auto" as const) : undefined,
-      max_completion_tokens: 1024,
-    };
-    try {
-      return await client.chat.completions.create({ ...pedido, model: modelo }, { timeout: TIMEOUT_LLM_MS });
-    } catch (err) {
-      if (!respaldo || modelo === respaldo || !esFallaDelProveedor(err)) throw err;
-      console.warn(`[agent] ${modelo} fallo (${err instanceof Error ? err.message : err}); sigo con ${respaldo}`);
-      modelo = respaldo;
-      return await client.chat.completions.create({ ...pedido, model: modelo }, { timeout: TIMEOUT_LLM_MS });
+  /** Una respuesta del modelo, o null si no quedo modelo ni tiempo. */
+  const completar = async (): Promise<OpenAI.Chat.Completions.ChatCompletion | null> => {
+    for (; eslabon < cadena.length; eslabon++) {
+      const { proveedor, modelo } = cadena[eslabon];
+      const espera = tiempoParaLlamada(PRESUPUESTO_TURNO_MS - (Date.now() - inicio), TIMEOUT_LLM_MS);
+      if (espera === 0) {
+        console.warn(`[agent] sin tiempo para llamar a ${proveedor}:${modelo}`);
+        return null;
+      }
+      const cliente = clienteDe(proveedor);
+      if (!cliente) continue;
+      try {
+        return await cliente.chat.completions.create({ ...pedido, model: modelo }, { timeout: espera });
+      } catch (err) {
+        console.warn(`[agent] ${proveedor}:${modelo} fallo: ${err instanceof Error ? err.message : err}`);
+      }
     }
+    return null;
+  };
+
+  /** Ningun modelo respondio: el cliente recibe un aviso en vez de silencio. */
+  const sinServicio = async (): Promise<RunAgentResult> => {
+    const aviso = getConfig().agente.mensajeSinServicio;
+    const [ultimo] = await db
+      .select({ body: messages.body, createdAt: messages.createdAt })
+      .from(messages)
+      .where(and(eq(messages.conversationId, conversation.id), eq(messages.direction, "out")))
+      .orderBy(desc(messages.createdAt))
+      .limit(1);
+    if (!debeAvisar(ultimo ?? null, aviso)) return { ok: false, reason: "llm_no_disponible (aviso ya enviado)", toolCalls };
+    const entrega = await deliverMessage(conversation.id, { text: aviso }, "agent");
+    return {
+      ok: false,
+      reply: entrega.ok ? aviso : undefined,
+      reason: entrega.ok ? "llm_no_disponible (se aviso al cliente)" : `llm_no_disponible; send_failed: ${entrega.error ?? "unknown"}`,
+      toolCalls,
+    };
   };
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const completion = await completar();
+    if (!completion) return sinServicio();
 
     const choice = completion.choices[0];
+    if (!choice) return sinServicio();
     const assistantMsg = choice.message;
 
     if (choice.finish_reason === "tool_calls" && assistantMsg.tool_calls?.length) {
@@ -144,7 +174,13 @@ export async function runAgentForConversation(conversationId: string): Promise<R
 
     // El simulador imita el canal de la conversacion: mismo formato que el real.
     const reply = aFormatoDeCanal(assistantMsg.content?.trim() ?? "", channel);
-    if (!reply) return { ok: false, reason: "empty_reply", toolCalls };
+    if (!reply) {
+      // Respuesta vacia (pasa con modelos de razonamiento que gastan los tokens
+      // pensando): se prueba el siguiente de la cadena antes de dejar al cliente sin nada.
+      console.warn(`[agent] ${cadena[eslabon]?.modelo} devolvio una respuesta vacia`);
+      eslabon++;
+      continue;
+    }
 
     const entrega = await deliverMessage(conversation.id, { text: reply }, "agent");
     if (!entrega.ok) {
@@ -155,7 +191,8 @@ export async function runAgentForConversation(conversationId: string): Promise<R
     return { ok: true, reply, toolCalls };
   }
 
-  return { ok: false, reason: "max_tool_rounds_exceeded", toolCalls };
+  console.warn(`[agent] se agotaron las ${MAX_TOOL_ROUNDS} rondas de tools sin respuesta`);
+  return sinServicio();
 }
 
 /**
