@@ -87,6 +87,39 @@ export interface NuevaDenuncia {
   denunciante_apellido: string;
   denunciante_telefono: string;
   denunciante_email: string | null;
+  /** Nombre del archivo en el bucket `fotos` del portal (como lo deja el wizard web). */
+  foto_path?: string | null;
+}
+
+/** Lo mismo que acepta el wizard web: PNG, JPG o GIF de hasta 5 MB. */
+const MIMES_FOTO: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif" };
+// El bucket `fotos` del portal tiene file_size_limit 5.000.000 (no 5 MiB).
+export const MAX_BYTES_FOTO = 5_000_000;
+
+export function fotoAceptada(mime: string, bytes: number): boolean {
+  return Boolean(MIMES_FOTO[mime]) && bytes > 0 && bytes <= MAX_BYTES_FOTO;
+}
+
+/**
+ * Sube la foto al bucket privado `fotos` del portal y devuelve el nombre para
+ * `denuncias.foto_path`. El panel municipal la muestra con una URL firmada, igual que
+ * las que sube el wizard (`<uuid>.<ext>` en la raiz del bucket).
+ */
+export async function subirFoto(bytes: Buffer, mime: string): Promise<string> {
+  const url = process.env.DENUNCIAS_SUPABASE_URL;
+  const clave = process.env.DENUNCIAS_SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !clave) throw new ErrorPortal("El portal de denuncias no esta configurado.");
+  const ext = MIMES_FOTO[mime];
+  if (!ext || !fotoAceptada(mime, bytes.length)) throw new ErrorPortal(`Foto no aceptada (${mime}, ${bytes.length} bytes).`);
+  const nombre = `${crypto.randomUUID()}.${ext}`;
+  const r = await fetch(`${url.replace(/\/$/, "")}/storage/v1/object/fotos/${nombre}`, {
+    method: "POST",
+    headers: { apikey: clave, Authorization: `Bearer ${clave}`, "Content-Type": mime, "x-upsert": "false" },
+    body: new Uint8Array(bytes),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!r.ok) throw new ErrorPortal(`El storage del portal respondio ${r.status}: ${(await r.text().catch(() => "")).slice(0, 200)}`);
+  return nombre;
 }
 
 export async function insertarDenuncia(d: NuevaDenuncia): Promise<string> {

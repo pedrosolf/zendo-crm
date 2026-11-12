@@ -1,13 +1,15 @@
 import "server-only";
-import { eq, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { activities, contacts } from "@/db/schema";
 import type { ModuloServidor } from "@/lib/modules/types";
-import type { ToolResult } from "@/lib/agent/tools";
+import type { ToolContext, ToolResult } from "@/lib/agent/tools";
+import { fotosRecibidas } from "@/lib/channels/fotos";
+import { descargarMedio } from "@/lib/channels/transcribir";
 import manifiesto from "./manifiesto";
 import { sugerir } from "./lib/clasificador";
 import { resolverProblema } from "./lib/resolver";
-import { buscarDenuncia, catalogoProblemas, ErrorPortal, insertarDenuncia, portalConfigurado } from "./lib/portal";
+import { buscarDenuncia, catalogoProblemas, ErrorPortal, fotoAceptada, insertarDenuncia, portalConfigurado, subirFoto } from "./lib/portal";
 import { centroCiudad, ciudad, dentroDeLaCiudad, direccionDe, ubicar } from "./lib/geocodificar";
 import { ReclamosPage } from "./componentes/ReclamosPage";
 
@@ -74,7 +76,38 @@ async function listarProblemas(args: Record<string, unknown>): Promise<ToolResul
   };
 }
 
-async function registrar(args: Record<string, unknown>, ctx: { contactId: string; contactPhone: string | null }): Promise<ToolResult> {
+/**
+ * La foto que mando el vecino por WhatsApp para ESTE reclamo: la ultima de las ultimas
+ * 24 h que llego despues del reclamo anterior del mismo contacto (si no, un segundo
+ * reclamo se llevaria la foto del primero). El portal guarda una sola foto por denuncia.
+ * Si algo falla, el reclamo se registra igual sin foto: la foto es opcional en la web.
+ */
+async function fotoParaElReclamo(ctx: ToolContext): Promise<{ path: string | null; aviso?: string }> {
+  if (!ctx.conversationId) return { path: null };
+  const [anterior] = await db
+    .select({ en: activities.createdAt })
+    .from(activities)
+    .where(and(eq(activities.contactId, ctx.contactId), ilike(activities.description, "Agente IA registro el reclamo%")))
+    .orderBy(desc(activities.createdAt))
+    .limit(1);
+  const hace24h = new Date(Date.now() - 86_400_000);
+  const desde = anterior && anterior.en > hace24h ? anterior.en : hace24h;
+  const [foto] = await fotosRecibidas(ctx.conversationId, desde);
+  if (!foto) return { path: null };
+  const medio = await descargarMedio(foto.url);
+  if (!medio) return { path: null, aviso: "No se pudo bajar la foto de WhatsApp: el reclamo quedo sin foto." };
+  if (!fotoAceptada(medio.mime, medio.bytes.length)) {
+    return { path: null, aviso: "La foto no es JPG/PNG/GIF o pesa mas de 5 MB: el reclamo quedo sin foto." };
+  }
+  try {
+    return { path: await subirFoto(medio.bytes, medio.mime) };
+  } catch (err) {
+    console.error("[denuncias] no se pudo subir la foto:", err instanceof Error ? err.message : err);
+    return { path: null, aviso: "No se pudo subir la foto al portal: el reclamo quedo sin foto." };
+  }
+}
+
+async function registrar(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   if (!portalConfigurado()) return sinPortal();
   const errores: string[] = [];
 
@@ -120,8 +153,11 @@ async function registrar(args: Record<string, unknown>, ctx: { contactId: string
     referencia = `Ubicacion aproximada (cargado por WhatsApp)${referencia ? `. ${referencia}` : ""}`.slice(0, 255);
   }
 
+  const foto = await fotoParaElReclamo(ctx);
+
   try {
     const codigo = await insertarDenuncia({
+      foto_path: foto.path,
       tipo_id: problema!.tipo_id,
       problema_id: problema!.id,
       direccion,
@@ -161,7 +197,9 @@ async function registrar(args: Record<string, unknown>, ctx: { contactId: string
         tipo: problema!.tipo_nombre,
         direccion,
         ubicacion: punto.encontrada || "aproximada",
-        mensaje: `Reclamo registrado. Dale al vecino el codigo ${codigo} para seguirlo.`,
+        foto: foto.path ? "adjunta" : "sin foto",
+        aviso_foto: foto.aviso,
+        mensaje: `Reclamo registrado. Dale al vecino el codigo ${codigo} para seguirlo.${foto.path ? " Contale que la foto quedo adjunta." : ""}`,
       },
     };
   } catch (err) {
