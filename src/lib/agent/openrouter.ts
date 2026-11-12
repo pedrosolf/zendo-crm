@@ -9,20 +9,22 @@ import { cadenaDeModelos, type EslabonModelo } from "./contingencia";
  *
  *   LLM_PROVIDER=openrouter  (default)  OPENROUTER_API_KEY  openrouter.ai
  *   LLM_PROVIDER=nvidia                 NVIDIA_API_KEY      build.nvidia.com (NIM)
+ *   LLM_PROVIDER=coarena                COARENA_API_KEY     coarena.ai (sin embeddings)
  *
  * Sin LLM_PROVIDER se elige por la clave que haya: OpenRouter si esta, si no NVIDIA.
  * El archivo conserva su nombre heredado para no mover los imports del nucleo.
  */
 
-export type ProveedorLLM = "openrouter" | "nvidia";
+export type ProveedorLLM = "openrouter" | "nvidia" | "coarena";
 
 interface DatosProveedor {
   nombre: string;
   baseURL: string;
-  variableClave: "OPENROUTER_API_KEY" | "NVIDIA_API_KEY";
+  variableClave: "OPENROUTER_API_KEY" | "NVIDIA_API_KEY" | "COARENA_API_KEY";
   modeloDefault: string;
   /** Si el principal no contesta a tiempo. Vacio = sin respaldo. */
   respaldoDefault: string;
+  /** Vacio = el proveedor no tiene embeddings: la base de conocimiento usa otro. */
   embeddingDefault: string;
 }
 
@@ -47,19 +49,48 @@ const PROVEEDORES: Record<ProveedorLLM, DatosProveedor> = {
     respaldoDefault: "nvidia/nemotron-3.5-lightning-30b-a3b",
     embeddingDefault: "nvidia/nemotron-3-embed-1b",
   },
+  coarena: {
+    nombre: "Coarena",
+    baseURL: "https://coarena.ai/api/v1",
+    variableClave: "COARENA_API_KEY",
+    // Capa gratuita: USD 5 de uso por dia, 30 pedidos por minuto y 2 simultaneos.
+    modeloDefault: "claude-haiku-5-5",
+    // Benchmark 2026-11-12 (tools de muni-bot y turnos): haiku 3/3 en 1-4 s; minimax 3/3
+    // en menos de 1 s. Ojo: el limite de 30 pedidos por minuto es de toda la cuenta, asi
+    // que conviene un respaldo de otro proveedor (AGENT_MODEL_FALLBACK=nvidia:...).
+    respaldoDefault: "minimax-m3-1-flash",
+    // No ofrece /embeddings (solo chat): ver proveedorDeEmbeddings().
+    embeddingDefault: "",
+  },
 };
 
 export function proveedorLLM(): ProveedorLLM {
   const elegido = process.env.LLM_PROVIDER?.trim().toLowerCase();
-  if (elegido === "nvidia" || elegido === "openrouter") return elegido;
+  if (elegido === "nvidia" || elegido === "openrouter" || elegido === "coarena") return elegido;
   if (process.env.OPENROUTER_API_KEY) return "openrouter";
   if (process.env.NVIDIA_API_KEY) return "nvidia";
+  if (process.env.COARENA_API_KEY) return "coarena";
   return "openrouter";
 }
 
 export function datosProveedor(): DatosProveedor & { id: ProveedorLLM } {
   const id = proveedorLLM();
   return { id, ...PROVEEDORES[id] };
+}
+
+/**
+ * Quien vectoriza la base de conocimiento: el proveedor del agente si tiene embeddings;
+ * si no (Coarena), el primero que tenga clave entre NVIDIA y OpenRouter. null = ninguno,
+ * y la busqueda queda solo por palabras.
+ */
+export function proveedorDeEmbeddings(): (DatosProveedor & { id: ProveedorLLM; clave: string }) | null {
+  const candidatos: ProveedorLLM[] = [proveedorLLM(), "nvidia", "openrouter"];
+  for (const id of candidatos) {
+    const p = PROVEEDORES[id];
+    const clave = process.env[p.variableClave];
+    if (p.embeddingDefault && clave) return { id, ...p, clave };
+  }
+  return null;
 }
 
 export function claveLLM(): string | undefined {

@@ -1,5 +1,5 @@
 import "server-only";
-import { claveLLM, datosProveedor } from "@/lib/agent/openrouter";
+import { proveedorDeEmbeddings } from "@/lib/agent/openrouter";
 
 /**
  * Embeddings por el mismo proveedor del agente (OpenRouter o NVIDIA NIM, ver
@@ -16,13 +16,14 @@ const LOTE = 32;
 export type TipoTexto = "passage" | "query";
 
 export function modeloEmbedding(): string {
-  return process.env.EMBEDDING_MODEL?.trim() || datosProveedor().embeddingDefault;
+  return process.env.EMBEDDING_MODEL?.trim() || proveedorDeEmbeddings()?.embeddingDefault || "";
 }
 
 async function lote(textos: string[], modelo: string, tipo: TipoTexto): Promise<(number[] | null)[]> {
-  const clave = claveLLM();
-  if (!clave) return textos.map(() => null);
-  const p = datosProveedor();
+  // Coarena no tiene embeddings: va por NVIDIA u OpenRouter si hay clave.
+  const p = proveedorDeEmbeddings();
+  if (!p || !modelo) return textos.map(() => null);
+  const clave = p.clave;
   for (let intento = 0; intento < 2; intento++) {
     try {
       const r = await fetch(`${p.baseURL}/embeddings`, {

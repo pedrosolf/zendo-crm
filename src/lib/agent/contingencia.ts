@@ -11,7 +11,7 @@
  *      config.agente.mensajeSinServicio, una sola vez cada 30 minutos por hilo.
  */
 
-export type Proveedor = "openrouter" | "nvidia";
+export type Proveedor = "openrouter" | "nvidia" | "coarena";
 
 export interface EslabonModelo {
   proveedor: Proveedor;
@@ -40,7 +40,7 @@ export function cadenaDeModelos(opts: {
       : [];
 
   for (const entrada of entradas) {
-    const m = /^(openrouter|nvidia):(.+)$/i.exec(entrada);
+    const m = /^(openrouter|nvidia|coarena):(.+)$/i.exec(entrada);
     const eslabon: EslabonModelo = m
       ? { proveedor: m[1].toLowerCase() as Proveedor, modelo: m[2].trim() }
       : { proveedor: opts.proveedor, modelo: entrada };

@@ -256,8 +256,8 @@ if (await esperarServidor()) {
   console.log("");
   paso(`listo: ${base}`);
   paso("entras directo, sin login: en modo local no hay sesion.");
-  if (!process.env.OPENROUTER_API_KEY && !process.env.NVIDIA_API_KEY) {
-    paso("el agente de IA esta apagado (falta OPENROUTER_API_KEY o NVIDIA_API_KEY en .env.local).");
+  if (!process.env.OPENROUTER_API_KEY && !process.env.NVIDIA_API_KEY && !process.env.COARENA_API_KEY) {
+    paso("el agente de IA esta apagado (falta OPENROUTER_API_KEY, NVIDIA_API_KEY o COARENA_API_KEY en .env.local).");
   }
   console.log("");
 }

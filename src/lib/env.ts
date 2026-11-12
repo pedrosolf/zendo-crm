@@ -49,9 +49,10 @@ export const esquemaEnv = z.object({
   SWEEP_INTERVAL_MIN: z.preprocess(vacioComoAusente, z.coerce.number().int().min(1).optional()),
 
   // --- Agente IA (OpenRouter o NVIDIA NIM, segun LLM_PROVIDER) ---
-  LLM_PROVIDER: z.preprocess(vacioComoAusente, z.enum(["openrouter", "nvidia"]).optional()),
+  LLM_PROVIDER: z.preprocess(vacioComoAusente, z.enum(["openrouter", "nvidia", "coarena"]).optional()),
   OPENROUTER_API_KEY: opcional,
   NVIDIA_API_KEY: opcional,
+  COARENA_API_KEY: opcional,
   AGENT_MODEL: opcional,
 
   // --- Zernio (WhatsApp + Instagram + Messenger) ---
@@ -126,7 +127,7 @@ export function envFaltantes(): string[] {
 export function capacidades() {
   const e = process.env;
   return {
-    agente: Boolean(e.OPENROUTER_API_KEY || e.NVIDIA_API_KEY),
+    agente: Boolean(e.OPENROUTER_API_KEY || e.NVIDIA_API_KEY || e.COARENA_API_KEY),
     zernio: Boolean(e.ZERNIO_API_KEY),
     metaDirecto: Boolean(e.WHATSAPP_ACCESS_TOKEN && e.WHATSAPP_PHONE_NUMBER_ID),
     push: Boolean(e.NEXT_PUBLIC_VAPID_PUBLIC_KEY && e.VAPID_PRIVATE_KEY),
