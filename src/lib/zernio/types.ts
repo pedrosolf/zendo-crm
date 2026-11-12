@@ -184,6 +184,8 @@ export interface ZernioInboxMessage {
   deliveryStatus?: string | null;
   attachments?: ZernioAttachment[];
   isDeleted?: boolean;
+  /** WhatsApp: el pin compartido viene aca (`metadata.location`), no en el webhook. */
+  metadata?: Record<string, unknown>;
 }
 
 export interface ZernioAccount {

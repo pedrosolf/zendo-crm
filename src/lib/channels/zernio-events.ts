@@ -10,6 +10,8 @@ import {
 import { isChannel, type Channel } from "./types";
 import { textoDeAudio, textoDeUbicacion } from "./medios";
 import { transcribirDesdeUrl } from "./transcribir";
+import { listMessages } from "@/lib/zernio/inbox";
+import type { Ubicacion } from "./medios";
 import { resolveDefaultTenantId } from "@/lib/tenants";
 import { normalizePhone } from "@/lib/phone";
 import type {
@@ -176,7 +178,7 @@ async function handleMessageEvent(
     // platformMessageId (wamid.* en WhatsApp) y no el id interno de Zernio: mantiene la
     // deduplicacion contra los mensajes que pudo haber guardado el webhook de Meta.
     externalId: msg.platformMessageId ?? msg.id ?? null,
-    body: await cuerpoDelMensaje(msg, direction),
+    body: await cuerpoDelMensaje(msg, direction, zernioAccountId ?? undefined),
     type: messageType(msg),
     sentAt: parseDate(msg.sentAt ?? payload.timestamp),
     status: direction === "in" && msg.isRead ? "read" : undefined,
@@ -270,15 +272,40 @@ function resolveParticipant(
  * entrante, transcripta (src/lib/channels/transcribir.ts). Corre dentro de `after()`,
  * despues de contestarle 2xx a Zernio, asi que el segundo de transcripcion no pesa.
  */
-async function cuerpoDelMensaje(msg: ZernioMessage, direction: "in" | "out"): Promise<string> {
-  if (msg.location && Number.isFinite(msg.location.latitude) && Number.isFinite(msg.location.longitude)) {
-    return textoDeUbicacion(msg.location);
-  }
+async function cuerpoDelMensaje(msg: ZernioMessage, direction: "in" | "out", accountId?: string): Promise<string> {
+  const ubicacion = await ubicacionDelMensaje(msg, accountId);
+  if (ubicacion) return textoDeUbicacion(ubicacion);
   const audio = msg.attachments?.find((a) => (a.type ?? "").toLowerCase() === "audio");
   if (direction === "in" && audio?.url && !msg.text?.trim()) {
     return textoDeAudio(await transcribirDesdeUrl(audio.url));
   }
   return extractBody(msg);
+}
+
+function comoUbicacion(valor: unknown): Ubicacion | null {
+  const u = valor as Partial<Ubicacion> | null | undefined;
+  return u && Number.isFinite(u.latitude) && Number.isFinite(u.longitude) ? (u as Ubicacion) : null;
+}
+
+/**
+ * El pin del mapa. Contra lo que dice su documentacion, el webhook de Zernio NO trae las
+ * coordenadas (visto el 2026-11-12): el mensaje llega como "📍 Location", sin `location`
+ * ni adjuntos. El REST si las tiene, en `metadata.location` del mismo mensaje (su `id`
+ * es el wamid, que el webhook manda como `platformMessageId`). Se mira primero el
+ * webhook por si algun dia las manda.
+ */
+async function ubicacionDelMensaje(msg: ZernioMessage, accountId?: string): Promise<Ubicacion | null> {
+  const directa = comoUbicacion(msg.location) ?? comoUbicacion(msg.metadata?.location);
+  if (directa) return directa;
+  if (!msg.text?.trim().startsWith("📍") || !msg.platformMessageId || !msg.conversationId) return null;
+  const r = await listMessages(msg.conversationId, { accountId, limit: 20, sortOrder: "desc" });
+  if (!r.success) {
+    console.warn("[zernio] no se pudo leer la ubicacion:", r.error);
+    return null;
+  }
+  const lista = r.data.messages ?? r.data.data ?? [];
+  const propio = lista.find((m) => m.id === msg.platformMessageId);
+  return comoUbicacion(propio?.metadata?.location);
 }
 
 /** Espeja `extractMessageBody` del webhook de Meta para que el chat se lea igual. */
@@ -310,7 +337,7 @@ function extractBody(msg: ZernioMessage): string {
 }
 
 function messageType(msg: ZernioMessage): string {
-  if (msg.location) return "location";
+  if (msg.location || msg.text?.trim().startsWith("📍")) return "location";
   if (msg.text?.trim()) return "text";
   const kind = msg.attachments?.[0]?.type;
   return kind ? String(kind) : "text";
