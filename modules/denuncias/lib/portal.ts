@@ -173,9 +173,39 @@ export async function ultimasDenuncias(limite = 30) {
     created_at: string;
     denunciante_nombre: string;
     denunciante_apellido: string;
+    foto_path: string | null;
     problemas: { nombre: string } | null;
   };
   return rest<Fila[]>(
-    `denuncias?select=codigo,estado,direccion,created_at,denunciante_nombre,denunciante_apellido,problemas(nombre)&order=created_at.desc&limit=${limite}`
+    `denuncias?select=codigo,estado,direccion,created_at,denunciante_nombre,denunciante_apellido,foto_path,problemas(nombre)&order=created_at.desc&limit=${limite}`
   );
+}
+
+/**
+ * URLs firmadas (1 h) para las fotos del bucket privado `fotos`, en un solo pedido.
+ * Igual que el panel del portal: la foto nunca queda publica. Devuelve path -> URL; las
+ * que fallan no aparecen.
+ */
+export async function urlsDeFotos(paths: string[]): Promise<Map<string, string>> {
+  const salida = new Map<string, string>();
+  const url = process.env.DENUNCIAS_SUPABASE_URL?.replace(/\/$/, "");
+  const clave = process.env.DENUNCIAS_SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !clave || paths.length === 0) return salida;
+  try {
+    const r = await fetch(`${url}/storage/v1/object/sign/fotos`, {
+      method: "POST",
+      headers: { apikey: clave, Authorization: `Bearer ${clave}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ expiresIn: 3600, paths }),
+      signal: AbortSignal.timeout(10_000),
+      cache: "no-store",
+    });
+    if (!r.ok) return salida;
+    const filas = (await r.json()) as { path?: string; signedURL?: string | null; error?: string | null }[];
+    for (const f of filas) {
+      if (f.path && f.signedURL) salida.set(f.path, `${url}/storage/v1${f.signedURL}`);
+    }
+  } catch {
+    /* sin fotos: la tabla se muestra igual */
+  }
+  return salida;
 }

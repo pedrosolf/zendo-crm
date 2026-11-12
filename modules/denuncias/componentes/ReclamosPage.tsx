@@ -1,9 +1,9 @@
 import "server-only";
-import { Megaphone } from "lucide-react";
+import { ImageOff, Megaphone } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { zonaHoraria } from "@/lib/config";
-import { portalConfigurado, ultimasDenuncias } from "../lib/portal";
+import { portalConfigurado, ultimasDenuncias, urlsDeFotos } from "../lib/portal";
 
 const ESTILO: Record<string, string> = {
   recibido: "bg-sky-50 text-sky-700 border-sky-200",
@@ -34,6 +34,7 @@ export async function ReclamosPage() {
   } catch (e) {
     error = e instanceof Error ? e.message : "No se pudo leer el portal";
   }
+  const fotos = await urlsDeFotos(filas.map((f) => f.foto_path).filter((p): p is string => Boolean(p)));
   const fecha = new Intl.DateTimeFormat("es", { timeZone: zonaHoraria(), dateStyle: "short", timeStyle: "short" });
 
   return (
@@ -54,6 +55,7 @@ export async function ReclamosPage() {
             <thead className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>
                 <th className="px-4 py-2.5 font-medium">Codigo</th>
+                <th className="px-4 py-2.5 font-medium">Foto</th>
                 <th className="px-4 py-2.5 font-medium">Problema</th>
                 <th className="px-4 py-2.5 font-medium">Direccion</th>
                 <th className="px-4 py-2.5 font-medium">Vecino</th>
@@ -65,6 +67,19 @@ export async function ReclamosPage() {
               {filas.map((f) => (
                 <tr key={f.codigo} className="border-b last:border-0">
                   <td className="px-4 py-2.5 font-mono text-xs">{f.codigo}</td>
+                  <td className="px-4 py-2.5">
+                    {f.foto_path && fotos.get(f.foto_path) ? (
+                      // URL firmada del bucket privado del portal: vence en 1 h, por eso <a> y no next/image.
+                      <a href={fotos.get(f.foto_path)} target="_blank" rel="noreferrer" title="Ver foto">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={fotos.get(f.foto_path)} alt={`Foto del reclamo ${f.codigo}`} className="h-12 w-12 rounded-md border object-cover" />
+                      </a>
+                    ) : f.foto_path ? (
+                      <ImageOff className="h-4 w-4 text-muted-foreground" aria-label="No se pudo cargar la foto" />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5">{f.problemas?.nombre}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{f.direccion}</td>
                   <td className="px-4 py-2.5">{f.denunciante_nombre} {f.denunciante_apellido}</td>
