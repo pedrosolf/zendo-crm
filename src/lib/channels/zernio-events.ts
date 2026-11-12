@@ -8,6 +8,8 @@ import {
   upsertConversation,
 } from "./ingest";
 import { isChannel, type Channel } from "./types";
+import { textoDeAudio, textoDeUbicacion } from "./medios";
+import { transcribirDesdeUrl } from "./transcribir";
 import { resolveDefaultTenantId } from "@/lib/tenants";
 import { normalizePhone } from "@/lib/phone";
 import type {
@@ -174,7 +176,7 @@ async function handleMessageEvent(
     // platformMessageId (wamid.* en WhatsApp) y no el id interno de Zernio: mantiene la
     // deduplicacion contra los mensajes que pudo haber guardado el webhook de Meta.
     externalId: msg.platformMessageId ?? msg.id ?? null,
-    body: extractBody(msg),
+    body: await cuerpoDelMensaje(msg, direction),
     type: messageType(msg),
     sentAt: parseDate(msg.sentAt ?? payload.timestamp),
     status: direction === "in" && msg.isRead ? "read" : undefined,
@@ -263,6 +265,22 @@ function resolveParticipant(
   };
 }
 
+/**
+ * El agente solo lee texto: el pin del mapa entra con sus coordenadas y la nota de voz
+ * entrante, transcripta (src/lib/channels/transcribir.ts). Corre dentro de `after()`,
+ * despues de contestarle 2xx a Zernio, asi que el segundo de transcripcion no pesa.
+ */
+async function cuerpoDelMensaje(msg: ZernioMessage, direction: "in" | "out"): Promise<string> {
+  if (msg.location && Number.isFinite(msg.location.latitude) && Number.isFinite(msg.location.longitude)) {
+    return textoDeUbicacion(msg.location);
+  }
+  const audio = msg.attachments?.find((a) => (a.type ?? "").toLowerCase() === "audio");
+  if (direction === "in" && audio?.url && !msg.text?.trim()) {
+    return textoDeAudio(await transcribirDesdeUrl(audio.url));
+  }
+  return extractBody(msg);
+}
+
 /** Espeja `extractMessageBody` del webhook de Meta para que el chat se lea igual. */
 function extractBody(msg: ZernioMessage): string {
   const text = msg.text?.trim();
@@ -292,6 +310,7 @@ function extractBody(msg: ZernioMessage): string {
 }
 
 function messageType(msg: ZernioMessage): string {
+  if (msg.location) return "location";
   if (msg.text?.trim()) return "text";
   const kind = msg.attachments?.[0]?.type;
   return kind ? String(kind) : "text";

@@ -3,6 +3,7 @@ import { contacts, crmSettings, deals, pipelineStages, pipelines } from "@/db/sc
 import { and, desc, eq } from "drizzle-orm";
 import { camposContacto, getConfig } from "@/lib/config";
 import { resumirCampos } from "@/lib/config/campos";
+import { GUIA_MEDIOS } from "@/lib/channels/medios";
 
 export const SYSTEM_PROMPT_SETTINGS_KEY = "agent.system_prompt";
 
@@ -39,7 +40,7 @@ Sos {{agente}}, parte del equipo de {{negocio}}. Atendes a las personas que escr
  * como un WhatsApp. Es el piso comun; el prompt propio de cada canal lo puede pisar.
  */
 const CHANNEL_HINTS: Record<string, string> = {
-  whatsapp: "Manten cada respuesta corta y natural (1-3 parrafos cortos). Podes incluir links si aportan.",
+  whatsapp: `Manten cada respuesta corta y natural (1-3 parrafos cortos). Podes incluir links si aportan. ${GUIA_MEDIOS}`,
   instagram:
     "Estas en un DM de Instagram: responde en 1 o 2 frases, tono informal y directo. Evita pegar URLs largas; si hace falta detalle, ofrece seguir por WhatsApp y pedi el numero.",
   facebook: "Estas en Messenger: respuestas breves (1 o 2 frases) y tono cercano. Podes incluir un link si aporta.",

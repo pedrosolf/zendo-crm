@@ -43,6 +43,36 @@ export async function ubicar(direccion: string): Promise<(Punto & { encontrada: 
   return calle ? { ...calle, aproximada: true } : null;
 }
 
+/** El punto cae dentro del municipio (el mismo margen que acota la busqueda). */
+export function dentroDeLaCiudad(p: Punto): boolean {
+  const c = centroCiudad();
+  return Math.abs(p.lat - c.lat) <= MARGEN && Math.abs(p.lng - c.lng) <= MARGEN;
+}
+
+/**
+ * Coordenadas -> "Calle 1234" con Nominatim reverse. Para el pin que manda el vecino por
+ * WhatsApp: el portal guarda una direccion legible ademas del punto.
+ */
+export async function direccionDe(p: Punto): Promise<string | null> {
+  const params = new URLSearchParams({ format: "json", lat: String(p.lat), lon: String(p.lng), zoom: "18", addressdetails: "1" });
+  const email = process.env.NOMINATIM_EMAIL;
+  if (email) params.set("email", email);
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?${params}`, {
+      headers: { "User-Agent": "BuilderCRM-denuncias/1.0", "Accept-Language": "es" },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!r.ok) return null;
+    const d = (await r.json()) as { address?: Record<string, string>; display_name?: string };
+    const a = d.address ?? {};
+    const calle = a.road ?? a.pedestrian ?? a.footway ?? a.neighbourhood;
+    if (calle) return [calle, a.house_number].filter(Boolean).join(" ");
+    return d.display_name?.split(",").slice(0, 2).join(",").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function geocodificar(direccion: string): Promise<(Punto & { encontrada: string }) | null> {
   const c = centroCiudad();
   const params = new URLSearchParams({

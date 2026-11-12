@@ -148,6 +148,11 @@ export interface ZernioMessage {
   direction: ZernioDirection;
   text?: string | null;
   attachments?: ZernioAttachment[];
+  /**
+   * WhatsApp: pin del mapa que compartio el usuario, tal cual lo manda Meta. El `text`
+   * es solo el emoji con el nombre; las coordenadas estan aca.
+   */
+  location?: { latitude: number; longitude: number; name?: string; address?: string } | null;
   sender?: ZernioMessageSender;
   sentAt?: string;
   isRead?: boolean;

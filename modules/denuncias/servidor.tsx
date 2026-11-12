@@ -8,7 +8,7 @@ import manifiesto from "./manifiesto";
 import { sugerir } from "./lib/clasificador";
 import { resolverProblema } from "./lib/resolver";
 import { buscarDenuncia, catalogoProblemas, ErrorPortal, insertarDenuncia, portalConfigurado } from "./lib/portal";
-import { centroCiudad, ciudad, ubicar } from "./lib/geocodificar";
+import { centroCiudad, ciudad, dentroDeLaCiudad, direccionDe, ubicar } from "./lib/geocodificar";
 import { ReclamosPage } from "./componentes/ReclamosPage";
 
 /**
@@ -83,8 +83,15 @@ async function registrar(args: Record<string, unknown>, ctx: { contactId: string
   const problema = "problema" in resuelto ? resuelto.problema : undefined;
   if ("error" in resuelto) errores.push(resuelto.error);
 
-  const direccion = texto(args.direccion, 255);
-  if (!direccion) errores.push("direccion: falta la calle y altura (o esquina) del problema");
+  // Pin del mapa por WhatsApp: manda sobre la direccion escrita (Nominatim no siempre
+  // encuentra calles de barrio, y el pin es exactamente donde esta el problema).
+  const lat = Number(args.lat);
+  const lng = Number(args.lng);
+  const pin = Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0) ? { lat, lng } : null;
+  if (pin && !dentroDeLaCiudad(pin)) errores.push(`ubicacion: el punto compartido queda fuera de ${ciudad()}; pedi que la comparta de nuevo o que escriba la direccion`);
+  let direccion = texto(args.direccion, 255);
+  if (!direccion && pin && dentroDeLaCiudad(pin)) direccion = ((await direccionDe(pin)) ?? `Ubicacion ${lat.toFixed(5)},${lng.toFixed(5)}`).slice(0, 255);
+  if (!direccion) errores.push("direccion: falta la calle y altura (o esquina) del problema, o que comparta la ubicacion");
   const dni = String(args.dni ?? "").replace(/[^0-9]/g, "");
   if (!/^[0-9]{7,9}$/.test(dni)) errores.push("dni: tiene que tener 7 a 9 numeros");
   const nombre = texto(args.nombre, 100);
@@ -98,7 +105,7 @@ async function registrar(args: Record<string, unknown>, ctx: { contactId: string
   if (errores.length > 0) return { ok: false, error: `Faltan o no son validos estos datos: ${errores.join("; ")}` };
 
   let referencia = texto(args.referencia, 255) || null;
-  let punto = await ubicar(direccion);
+  let punto = pin ? { ...pin, encontrada: direccion, aproximada: false } : await ubicar(direccion);
   if (punto?.aproximada) {
     referencia = `Esquina/entre calles: ${direccion} (punto aproximado)${referencia ? `. ${referencia}` : ""}`.slice(0, 255);
   }
@@ -234,7 +241,7 @@ const servidor: ModuloServidor = {
         function: {
           name: "registrar_reclamo",
           description:
-            "Registra el reclamo en el portal municipal y devuelve el codigo de seguimiento. Llamala SOLO cuando tengas: la categoria confirmada, direccion, DNI, nombre y apellido, y el vecino confirmo el resumen. El telefono por defecto es el del chat.",
+            "Registra el reclamo en el portal municipal y devuelve el codigo de seguimiento. Llamala SOLO cuando tengas: la categoria confirmada, direccion (o el pin de ubicacion compartido), DNI, nombre y apellido, y el vecino confirmo el resumen. El telefono por defecto es el del chat.",
           parameters: {
             type: "object",
             properties: {
@@ -244,7 +251,12 @@ const servidor: ModuloServidor = {
               },
               problema_id: { type: "integer", description: "Opcional. Si no coincide con el nombre, se usa el nombre." },
               descripcion: { type: "string", description: "Descripcion del problema." },
-              direccion: { type: "string", description: "Calle y altura, o esquina, donde esta el problema." },
+              direccion: {
+                type: "string",
+                description: "Calle y altura, o esquina, donde esta el problema. Puede ir vacia si el vecino compartio la ubicacion (lat/lng).",
+              },
+              lat: { type: "number", description: "Latitud del pin si el vecino compartio la ubicacion (mensaje '📍 Ubicacion compartida: lat,lng')." },
+              lng: { type: "number", description: "Longitud del pin compartido." },
               referencia: { type: "string", description: "Referencia opcional (frente a la escuela, al lado del kiosco)." },
               dni: { type: "string", description: "DNI del vecino, solo numeros." },
               nombre: { type: "string" },
@@ -256,7 +268,7 @@ const servidor: ModuloServidor = {
                 description: "true solo si la direccion no se encontro y el vecino no puede precisarla.",
               },
             },
-            required: ["problema", "direccion", "dni", "nombre", "apellido"],
+            required: ["problema", "dni", "nombre", "apellido"],
             additionalProperties: false,
           },
         },
