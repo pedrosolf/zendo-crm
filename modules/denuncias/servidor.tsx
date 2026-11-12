@@ -82,8 +82,8 @@ async function listarProblemas(args: Record<string, unknown>): Promise<ToolResul
  * reclamo se llevaria la foto del primero). El portal guarda una sola foto por denuncia.
  * Si algo falla, el reclamo se registra igual sin foto: la foto es opcional en la web.
  */
-async function fotoParaElReclamo(ctx: ToolContext): Promise<{ path: string | null; aviso?: string }> {
-  if (!ctx.conversationId) return { path: null };
+async function fotoDelVecino(ctx: ToolContext) {
+  if (!ctx.conversationId) return null;
   const [anterior] = await db
     .select({ en: activities.createdAt })
     .from(activities)
@@ -93,6 +93,11 @@ async function fotoParaElReclamo(ctx: ToolContext): Promise<{ path: string | nul
   const hace24h = new Date(Date.now() - 86_400_000);
   const desde = anterior && anterior.en > hace24h ? anterior.en : hace24h;
   const [foto] = await fotosRecibidas(ctx.conversationId, desde);
+  return foto ?? null;
+}
+
+async function fotoParaElReclamo(ctx: ToolContext): Promise<{ path: string | null; aviso?: string }> {
+  const foto = await fotoDelVecino(ctx);
   if (!foto) return { path: null };
   const medio = await descargarMedio(foto.url);
   if (!medio) return { path: null, aviso: "No se pudo bajar la foto de WhatsApp: el reclamo quedo sin foto." };
@@ -136,6 +141,18 @@ async function registrar(args: Record<string, unknown>, ctx: ToolContext): Promi
   const email = texto(args.email, 150);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errores.push("email: no es valido (es opcional, se puede omitir)");
   if (errores.length > 0) return { ok: false, error: `Faltan o no son validos estos datos: ${errores.join("; ")}` };
+
+  // La foto es opcional, pero hay que ofrecerla. Pedirlo solo en el prompt no alcanzo
+  // (2026-11-12, reclamo #1021): si el vecino daba categoria y direccion juntas, el
+  // modelo saltaba el paso. La tool no registra hasta que el agente diga que la ofrecio.
+  if (args.foto_ofrecida !== true && ctx.conversationId && !(await fotoDelVecino(ctx))) {
+    return {
+      ok: false,
+      error:
+        "Todavia no registres. Antes ofrecele al vecino mandar una foto del problema (\"Si queres, mandame una foto y la adjunto al reclamo; si no, decime y lo registro asi\"). " +
+        "Cuando mande la foto o diga que no, volve a llamar con foto_ofrecida=true.",
+    };
+  }
 
   let referencia = texto(args.referencia, 255) || null;
   let punto = pin ? { ...pin, encontrada: direccion, aproximada: false } : await ubicar(direccion);
@@ -304,6 +321,10 @@ const servidor: ModuloServidor = {
               ubicacion_aproximada: {
                 type: "boolean",
                 description: "true solo si la direccion no se encontro y el vecino no puede precisarla.",
+              },
+              foto_ofrecida: {
+                type: "boolean",
+                description: "true si ya le ofreciste al vecino mandar una foto y la mando o dijo que no. La foto que mande se adjunta sola.",
               },
             },
             required: ["problema", "dni", "nombre", "apellido"],
