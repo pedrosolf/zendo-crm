@@ -13,6 +13,7 @@ export interface Ubicacion {
 
 const PREFIJO_UBICACION = "📍 Ubicacion compartida:";
 const PREFIJO_AUDIO = "🎤 Audio:";
+const PREFIJO_FOTO = "📷 Foto";
 
 export function textoDeUbicacion(u: Ubicacion): string {
   const lat = u.latitude.toFixed(6);
@@ -36,9 +37,17 @@ export function textoDeAudio(transcripcion: string | null): string {
   return t ? `${PREFIJO_AUDIO} "${t}"` : `${PREFIJO_AUDIO} (no se pudo transcribir)`;
 }
 
+/** La foto queda guardada en el mensaje (raw_payload); el agente ve que llego y su epigrafe. */
+export function textoDeFoto(epigrafe: string | null | undefined, cantidad = 1): string {
+  const e = epigrafe?.trim();
+  const base = cantidad > 1 ? `${PREFIJO_FOTO}s (${cantidad})` : PREFIJO_FOTO;
+  return e ? `${base}: "${e}"` : base;
+}
+
 /** Lo que se le agrega al prompt del canal para que el agente sepa leer esto. */
 export const GUIA_MEDIOS =
   `Los mensajes que empiezan con "${PREFIJO_AUDIO}" son notas de voz transcriptas automaticamente: ` +
   "puede haber palabras mal entendidas; si algo importante no se entiende (un nombre, un numero, una direccion), " +
   "pedi que lo escriba. Si dice \"no se pudo transcribir\", pedile amablemente que lo escriba. " +
-  `Los que empiezan con "${PREFIJO_UBICACION}" son un pin del mapa con latitud,longitud: usalos como la ubicacion que te paso.`;
+  `Los que empiezan con "${PREFIJO_UBICACION}" son un pin del mapa con latitud,longitud: usalos como la ubicacion que te paso. ` +
+  `Los que empiezan con "${PREFIJO_FOTO}" son fotos que mando (no ves la imagen; si trae texto, es lo que escribio con la foto): agradecela y segui.`;

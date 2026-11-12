@@ -8,7 +8,7 @@ import {
   upsertConversation,
 } from "./ingest";
 import { isChannel, type Channel } from "./types";
-import { textoDeAudio, textoDeUbicacion } from "./medios";
+import { textoDeAudio, textoDeFoto, textoDeUbicacion } from "./medios";
 import { transcribirDesdeUrl } from "./transcribir";
 import { listMessages } from "@/lib/zernio/inbox";
 import type { Ubicacion } from "./medios";
@@ -279,6 +279,10 @@ async function cuerpoDelMensaje(msg: ZernioMessage, direction: "in" | "out", acc
   if (direction === "in" && audio?.url && !msg.text?.trim()) {
     return textoDeAudio(await transcribirDesdeUrl(audio.url));
   }
+  // Con foto, `text` es el epigrafe: sin esto la foto con texto entraba como texto solo y
+  // nadie sabia que habia una imagen para adjuntar.
+  const fotos = msg.attachments?.filter((a) => (a.type ?? "").toLowerCase() === "image") ?? [];
+  if (fotos.length > 0) return textoDeFoto(msg.text, fotos.length);
   return extractBody(msg);
 }
 
@@ -338,6 +342,7 @@ function extractBody(msg: ZernioMessage): string {
 
 function messageType(msg: ZernioMessage): string {
   if (msg.location || msg.text?.trim().startsWith("📍")) return "location";
+  if (msg.attachments?.some((a) => (a.type ?? "").toLowerCase() === "image")) return "image";
   if (msg.text?.trim()) return "text";
   const kind = msg.attachments?.[0]?.type;
   return kind ? String(kind) : "text";

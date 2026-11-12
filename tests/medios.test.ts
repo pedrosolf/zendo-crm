@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coordenadasDe, textoDeAudio, textoDeUbicacion } from "@/lib/channels/medios";
+import { coordenadasDe, textoDeAudio, textoDeFoto, textoDeUbicacion } from "@/lib/channels/medios";
 
 // El agente solo lee texto: si el pin o el audio entran como "[mensaje]", el vecino que
 // manda su ubicacion o una nota de voz no recibe respuesta util y nadie se entera.
@@ -22,5 +22,13 @@ describe("medios de WhatsApp como texto", () => {
     expect(textoDeAudio("hay un pozo en mi calle")).toBe('🎤 Audio: "hay un pozo en mi calle"');
     expect(textoDeAudio(null)).toBe("🎤 Audio: (no se pudo transcribir)");
     expect(textoDeAudio("   ")).toBe("🎤 Audio: (no se pudo transcribir)");
+  });
+});
+
+describe("fotos de WhatsApp", () => {
+  it("la foto entra marcada, con su epigrafe si lo trae", () => {
+    expect(textoDeFoto(null)).toBe("📷 Foto");
+    expect(textoDeFoto("asi esta el pozo")).toBe('📷 Foto: "asi esta el pozo"');
+    expect(textoDeFoto("", 3)).toBe("📷 Fotos (3)");
   });
 });
